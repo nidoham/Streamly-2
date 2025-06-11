@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Streamly</string>
+
+    <!-- Video related strings -->
+    <string name="video_thumbnail">Video thumbnail</string>
+    <string name="play_video">Play video</string>
+    <string name="video_title_placeholder">Video Title</string>
+    <string name="file_size_icon">File size</string>
+    <string name="resolution_icon">Video resolution</string>
+    <string name="file_path_placeholder">File path</string>
+    <string name="more_options">More options</string>
+    
+    <!-- Empty state strings -->
+    <string name="no_videos_found">No videos found</string>
+    <string name="no_videos_title">No Videos Found</string>
+    <string name="no_videos_subtitle">We couldn\'t find any videos in your storage</string>
+    <string name="refresh">Refresh</string>
+    <string name="loading_videos">Loading videos...</string>
+    <string name="error_occurred">Error occurred</string>
+    <string name="error_title">Something went wrong</string>
+    <string name="error_message">Unable to load videos. Please try again.</string>
+    <string name="retry">Retry</string>
+</resources>

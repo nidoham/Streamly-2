@@ -1,0 +1,20 @@
+{
+  "allFiles": [
+    {
+      "file": "/storage/emulated/0/AndroidIDEProjects/StreamlyVid/app/src/main/java/com/nidoham/streamlyvid/fragments/ui/HomeVideoFragment.java",
+      "selection": {
+        "end": {
+          "column": 60,
+          "index": 2987,
+          "line": 81
+        },
+        "start": {
+          "column": 60,
+          "index": 2987,
+          "line": 81
+        }
+      }
+    }
+  ],
+  "selectedFile": "/storage/emulated/0/AndroidIDEProjects/StreamlyVid/app/src/main/java/com/nidoham/streamlyvid/fragments/ui/HomeVideoFragment.java"
+}

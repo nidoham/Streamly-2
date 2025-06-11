@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <item
+        android:id="@+id/action_play"
+        android:title="Play"
+        android:icon="@drawable/ic_play_arrow"
+        android:orderInCategory="1" />
+    
+    <item
+        android:id="@+id/action_add_to_playlist"
+        android:title="Add to Playlist"
+        android:icon="@drawable/ic_playlist_add"
+        android:orderInCategory="2" />
+    
+    <item
+        android:id="@+id/action_share"
+        android:title="Share"
+        android:icon="@drawable/ic_share"
+        android:orderInCategory="3" />
+    
+    <item
+        android:id="@+id/action_rename"
+        android:title="Rename"
+        android:icon="@drawable/ic_edit"
+        android:orderInCategory="4" />
+    
+    <item
+        android:id="@+id/action_copy"
+        android:title="Copy"
+        android:icon="@drawable/ic_copy"
+        android:orderInCategory="5" />
+    
+    <item
+        android:id="@+id/action_move"
+        android:title="Move"
+        android:icon="@drawable/ic_move"
+        android:orderInCategory="6" />
+    
+    <item
+        android:id="@+id/action_properties"
+        android:title="Properties"
+        android:icon="@drawable/ic_info"
+        android:orderInCategory="7" />
+    
+    <item
+        android:id="@+id/action_delete"
+        android:title="Delete"
+        android:icon="@drawable/ic_delete"
+        android:orderInCategory="8" />
+
+</menu>
