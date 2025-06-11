@@ -312,7 +312,10 @@ public class HomeVideoFragment extends Fragment implements VideoAdapter.OnVideoC
     private void openVideoPlayer(VideoModel video) {
         // TODO: Implement video player opening
         if (getContext() != null) {
-            startActivity(new Intent(getContext(), PlayerActivity.class));
+
+            Intent intent = new Intent();
+            intent.setClass(getContext(), PlayerActivity.class);
+            startActivity(intent);
         }
     }
 
