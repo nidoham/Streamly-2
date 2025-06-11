@@ -5,13 +5,28 @@
       "selection": {
         "end": {
           "column": 1,
-          "index": 33343,
-          "line": 857
+          "index": 46361,
+          "line": 1199
         },
         "start": {
           "column": 1,
-          "index": 33343,
-          "line": 857
+          "index": 46361,
+          "line": 1199
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/AndroidIDEProjects/StreamlyVid/app/src/main/res/layout/activity_player.xml",
+      "selection": {
+        "end": {
+          "column": 45,
+          "index": 34410,
+          "line": 882
+        },
+        "start": {
+          "column": 45,
+          "index": 34410,
+          "line": 882
         }
       }
     }

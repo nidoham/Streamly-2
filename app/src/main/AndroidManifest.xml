@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Additional permissions for PlayerService -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
     <!-- Permissions for storage access -->
     <!-- For Android 12 (API 31) and below -->
     <uses-permission
@@ -80,6 +85,7 @@
     </queries>
 
     <application
+        android:name=".App"
         android:allowBackup="true"
         android:icon="@drawable/app_icon"
         android:roundIcon="@drawable/app_icon"
@@ -127,15 +133,33 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|navigation"
             android:windowSoftInputMode="adjustResize"
-            android:launchMode="singleTask" />
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true" />
 
-        <!-- Service for foreground playback (e.g., for background media playback) -->
+        <!-- PlayerService for background media playback -->
+        <service
+            android:name=".service.PlayerService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Service for foreground playback (your existing service) -->
         <service
             android:name=".PlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- Receiver for media button controls -->
+        <!-- Media button receiver for lock screen and notification controls -->
+        <receiver
+            android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Your existing media button receiver -->
         <receiver
             android:name=".MediaButtonReceiver"
             android:exported="true">

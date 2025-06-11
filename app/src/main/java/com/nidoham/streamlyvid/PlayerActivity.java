@@ -4,7 +4,10 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.PictureInPictureParams;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
@@ -22,16 +25,20 @@ import android.provider.Settings;
 import android.util.Log;
 import android.util.Rational;
 import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageButton;
 import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -42,6 +49,8 @@ import androidx.media3.ui.TimeBar;
 
 import com.nidoham.streamlyvid.databinding.ActivityPlayerBinding;
 import com.nidoham.streamlyvid.model.VideoModel;
+import com.nidoham.streamlyvid.service.PlayerService;
+import com.nidoham.streamlyvid.service.ServiceHelper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +70,11 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     private SharedPreferences prefs;
     private GestureDetector gestureDetector;
     private AudioManager audioManager;
+    
+    // Service components
+    private ServiceHelper serviceHelper;
+    private boolean useBackgroundService = false; // Default to false - only use when audio-only mode
+    private boolean isAudioOnlyMode = false; // Track if user selected audio-only mode
 
     // State variables
     private String videoPath, videoTitle;
@@ -78,6 +92,9 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     private int maxVolume, currentVolume;
     private float currentBrightness;
     
+    // UI elements for audio mode
+    private TextView audioModeIndicator;
+    
     // Handlers
     private final Handler controlsHandler = new Handler(Looper.getMainLooper());
     private final Handler timeHandler = new Handler(Looper.getMainLooper());
@@ -92,6 +109,53 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         }
     };
 
+    // Service broadcast receiver
+    private BroadcastReceiver serviceReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (action != null) {
+                switch (action) {
+                    case PlayerService.BROADCAST_PLAYBACK_STATE:
+                        boolean isPlaying = intent.getBooleanExtra("isPlaying", false);
+                        updatePlayPauseButton();
+                        if (isPlaying) {
+                            scheduleHideControls();
+                            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                        } else {
+                            pauseControlsHiding();
+                            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                        }
+                        break;
+                        
+                    case PlayerService.BROADCAST_POSITION_UPDATE:
+                        long currentPosition = intent.getLongExtra("currentPosition", 0);
+                        long duration = intent.getLongExtra("duration", 0);
+                        updateTimeDisplayFromService(currentPosition, duration);
+                        break;
+                        
+                    case "NEXT_TRACK":
+                        playNextVideo();
+                        break;
+                        
+                    case "PREVIOUS_TRACK":
+                        playPreviousVideo();
+                        break;
+                        
+                    case "MEDIA_ENDED":
+                        if (currentVideoIndex < playlist.size() - 1) {
+                            playNextVideo();
+                        }
+                        break;
+                        
+                    case "PLAYER_ERROR":
+                        handlePlayerError("Service playback error occurred");
+                        break;
+                }
+            }
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -101,6 +165,11 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         initializeComponents();
         setupFromIntent();
         setupUI();
+        
+        // Register service receiver
+        registerServiceReceiver();
+        
+        // Always start with local ExoPlayer (not background service)
         initializePlayer();
     }
 
@@ -124,6 +193,28 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         
         initializeBrightness();
         if (isTV) requestTVPermissions();
+        
+        // Initialize audio mode UI elements
+        initializeAudioModeUI();
+    }
+
+    private void initializeAudioModeUI() {
+        // Create audio mode indicator dynamically
+        audioModeIndicator = new TextView(this);
+        audioModeIndicator.setText("🎵 AUDIO ONLY MODE");
+        audioModeIndicator.setTextColor(Color.WHITE);
+        audioModeIndicator.setTextSize(18);
+        audioModeIndicator.setBackgroundColor(Color.parseColor("#80000000"));
+        audioModeIndicator.setPadding(20, 10, 20, 10);
+        audioModeIndicator.setVisibility(View.GONE);
+        
+        // Add to the CoordinatorLayout
+        CoordinatorLayout.LayoutParams params = new CoordinatorLayout.LayoutParams(
+            CoordinatorLayout.LayoutParams.WRAP_CONTENT,
+            CoordinatorLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = Gravity.CENTER;
+        binding.getRoot().addView(audioModeIndicator, params);
     }
 
     private void setupFromIntent() {
@@ -160,6 +251,118 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         showPlayerControls();
     }
 
+    private void showAudioTrackDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Playback Mode");
+        
+        String[] options = {"Video Mode", "Audio Only Mode"};
+        int currentSelection = isAudioOnlyMode ? 1 : 0;
+        
+        builder.setSingleChoiceItems(options, currentSelection, (dialog, which) -> {
+            boolean newAudioOnlyMode = (which == 1);
+            
+            if (newAudioOnlyMode != isAudioOnlyMode) {
+                isAudioOnlyMode = newAudioOnlyMode;
+                switchPlaybackMode(isAudioOnlyMode);
+                
+                Toast.makeText(this, 
+                    isAudioOnlyMode ? "Switched to Audio Only Mode - Background playback enabled" : "Switched to Video Mode", 
+                    Toast.LENGTH_LONG).show();
+            }
+            
+            dialog.dismiss();
+        });
+        
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
+    private void switchPlaybackMode(boolean audioOnlyMode) {
+        // Save current state
+        boolean wasPlaying = false;
+        long currentPosition = 0;
+        
+        if (useBackgroundService && serviceHelper != null) {
+            wasPlaying = serviceHelper.isPlaying();
+            currentPosition = serviceHelper.getCurrentPosition();
+            serviceHelper.stopPlayback();
+            serviceHelper.unbindService();
+        } else if (player != null) {
+            wasPlaying = player.isPlaying();
+            currentPosition = player.getCurrentPosition();
+            player.release();
+            player = null;
+        }
+        
+        // Switch mode
+        useBackgroundService = audioOnlyMode;
+        
+        if (audioOnlyMode) {
+            // Hide video view in audio-only mode
+            binding.playerView.setVisibility(View.GONE);
+            // Show audio-only indicator
+            showAudioOnlyIndicator();
+        } else {
+            // Show video view in video mode
+            binding.playerView.setVisibility(View.VISIBLE);
+            // Hide audio-only indicator
+            hideAudioOnlyIndicator();
+        }
+        
+        // Reinitialize player
+        initializePlayer();
+        
+        // Restore state
+        if (currentPosition > 0) {
+            if (useBackgroundService && serviceHelper != null) {
+                serviceHelper.seekTo(currentPosition);
+                if (wasPlaying) serviceHelper.resumePlayback();
+            } else if (player != null) {
+                player.seekTo(currentPosition);
+                if (wasPlaying) player.play();
+            }
+        }
+    }
+
+    private void showAudioOnlyIndicator() {
+        if (audioModeIndicator != null) {
+            audioModeIndicator.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void hideAudioOnlyIndicator() {
+        if (audioModeIndicator != null) {
+            audioModeIndicator.setVisibility(View.GONE);
+        }
+    }
+
+    private void initializeServiceHelper() {
+        serviceHelper = new ServiceHelper(this);
+        serviceHelper.setConnectionListener(new ServiceHelper.ServiceConnectionListener() {
+            @Override
+            public void onServiceConnected(PlayerService service) {
+                Log.d(TAG, "Connected to PlayerService");
+                updatePlayPauseButton();
+            }
+            
+            @Override
+            public void onServiceDisconnected() {
+                Log.d(TAG, "Disconnected from PlayerService");
+            }
+        });
+    }
+
+    private void registerServiceReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(PlayerService.BROADCAST_PLAYBACK_STATE);
+        filter.addAction(PlayerService.BROADCAST_POSITION_UPDATE);
+        filter.addAction("NEXT_TRACK");
+        filter.addAction("PREVIOUS_TRACK");
+        filter.addAction("MEDIA_ENDED");
+        filter.addAction("PLAYER_ERROR");
+        registerReceiver(serviceReceiver, filter);
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private void setupGestureDetector() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -171,13 +374,20 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
 
             @Override
             public boolean onDoubleTap(@NonNull MotionEvent e) {
-                if (player == null || isLocked) return false;
+                if (isLocked) return false;
                 
                 float screenWidth = binding.gestureOverlay.getWidth();
                 long seekTime = e.getX() < screenWidth / 2 ? -10000 : 10000;
                 
-                player.seekTo(Math.max(0, Math.min(player.getDuration(), 
-                                     player.getCurrentPosition() + seekTime)));
+                if (useBackgroundService && serviceHelper != null) {
+                    long newPosition = Math.max(0, Math.min(serviceHelper.getDuration(), 
+                                              serviceHelper.getCurrentPosition() + seekTime));
+                    serviceHelper.seekTo(newPosition);
+                } else if (player != null) {
+                    player.seekTo(Math.max(0, Math.min(player.getDuration(), 
+                                         player.getCurrentPosition() + seekTime)));
+                }
+                
                 showDoubleTapIndicator(seekTime > 0);
                 showPlayerControls();
                 return true;
@@ -217,7 +427,7 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
                             gestureType = initialX < binding.gestureOverlay.getWidth() / 2 ? 2 : 1;
                             
                             if (gestureType == 1) showVolumeControl();
-                            else showBrightnessControl();
+                            else if (!isAudioOnlyMode) showBrightnessControl(); // Only show brightness in video mode
                         }
                     }
                     
@@ -230,7 +440,7 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
                             int newVolume = (int) Math.max(0, Math.min(maxVolume, 
                                                          initialVolume + percentChange * maxVolume));
                             setVolume(newVolume);
-                        } else if (gestureType == 2) {
+                        } else if (gestureType == 2 && !isAudioOnlyMode) {
                             int newBrightness = (int) Math.max(0, Math.min(BRIGHTNESS_MAX, 
                                                               initialBrightness + percentChange * BRIGHTNESS_MAX));
                             setBrightness(newBrightness);
@@ -283,12 +493,18 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
 
             @Override
             public void onScrubMove(@NonNull TimeBar timeBar, long position) {
-                if (player != null) binding.tvCurrentTime.setText(formatTime(position));
+                binding.tvCurrentTime.setText(formatTime(position));
             }
 
             @Override
             public void onScrubStop(@NonNull TimeBar timeBar, long position, boolean cancelled) {
-                if (player != null && !cancelled) player.seekTo(position);
+                if (!cancelled) {
+                    if (useBackgroundService && serviceHelper != null) {
+                        serviceHelper.seekTo(position);
+                    } else if (player != null) {
+                        player.seekTo(position);
+                    }
+                }
                 scheduleHideControls();
             }
         });
@@ -298,26 +514,49 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         int[] buttonIds = {R.id.btn_back, R.id.btn_play_pause, R.id.btn_lock_screen_edge,
                           R.id.btn_unlock, R.id.btn_screen_orientation_mx, R.id.btn_aspect_ratio,
                           R.id.btn_center_speed_icon, R.id.btn_center_screenshot, R.id.btn_playlist,
-                          R.id.btn_pip_mode, R.id.btn_previous, R.id.btn_next};
+                          R.id.btn_pip_mode, R.id.btn_previous, R.id.btn_next, R.id.btn_center_audio_track};
         
         for (int id : buttonIds) {
-            findViewById(id).setOnClickListener(this);
+            View button = findViewById(id);
+            if (button != null) {
+                button.setOnClickListener(this);
+            }
         }
     }
 
     private void initializePlayer() {
-        try {
-            player = new ExoPlayer.Builder(this).build();
-            binding.playerView.setPlayer(player);
-            binding.playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-            player.addListener(this);
+        if (useBackgroundService && isAudioOnlyMode) {
+            // Use background service for audio-only playback
+            initializeServiceHelper();
+            serviceHelper.bindService();
             
-            prepareMedia(videoPath);
-            player.setPlayWhenReady(false); // Start paused
+            // Start playback through service
+            serviceHelper.startPlayback(videoPath, videoTitle, "Unknown Artist", true);
+            
             updateGlobalPlayingState(false, videoPath, videoTitle);
-        } catch (Exception e) {
-            handlePlayerError("Error initializing player: " + e.getMessage());
+        } else {
+            // Use ExoPlayer for video playback (default mode)
+            try {
+                player = new ExoPlayer.Builder(this).build();
+                binding.playerView.setPlayer(player);
+                binding.playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                player.addListener(this);
+                
+                prepareMedia(videoPath);
+                player.setPlayWhenReady(false);
+                updateGlobalPlayingState(false, videoPath, videoTitle);
+            } catch (Exception e) {
+                handlePlayerError("Error initializing player: " + e.getMessage());
+            }
         }
+    }
+
+    private boolean isAudioFile(String path) {
+        if (path == null) return false;
+        String lowerPath = path.toLowerCase();
+        return lowerPath.endsWith(".mp3") || lowerPath.endsWith(".aac") || 
+               lowerPath.endsWith(".wav") || lowerPath.endsWith(".flac") ||
+               lowerPath.endsWith(".ogg") || lowerPath.endsWith(".m4a");
     }
 
     private void prepareMedia(String path) {
@@ -356,7 +595,15 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
 
     private void scheduleHideControls() {
         pauseControlsHiding();
-        if (player != null && player.isPlaying() && controlsVisible && !isLocked) {
+        boolean isPlaying = false;
+        
+        if (useBackgroundService && serviceHelper != null) {
+            isPlaying = serviceHelper.isPlaying();
+        } else if (player != null) {
+            isPlaying = player.isPlaying();
+        }
+        
+        if (isPlaying && controlsVisible && !isLocked) {
             controlsHandler.postDelayed(hideControlsRunnable, HIDE_CONTROLS_DELAY);
         }
     }
@@ -387,8 +634,15 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     private void switchToVideoAtIndex() {
         if (currentVideoIndex >= 0 && currentVideoIndex < playlist.size()) {
             updateVideoFromPlaylist();
-            if (player != null) player.release();
-            initializePlayer();
+            
+            if (useBackgroundService && serviceHelper != null) {
+                serviceHelper.stopPlayback();
+                serviceHelper.startPlayback(videoPath, videoTitle, "Unknown Artist", isAudioOnlyMode);
+            } else {
+                if (player != null) player.release();
+                initializePlayer();
+            }
+            
             updateNavigationButtons();
             
             Toast.makeText(this, String.format(Locale.getDefault(),
@@ -428,7 +682,15 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     }
 
     private void updatePlayPauseButton() {
-        if (player != null && player.isPlaying()) {
+        boolean isPlaying = false;
+        
+        if (useBackgroundService && serviceHelper != null) {
+            isPlaying = serviceHelper.isPlaying();
+        } else if (player != null) {
+            isPlaying = player.isPlaying();
+        }
+        
+        if (isPlaying) {
             binding.btnPlayPause.setImageResource(android.R.drawable.ic_media_pause);
         } else {
             binding.btnPlayPause.setImageResource(android.R.drawable.ic_media_play);
@@ -441,6 +703,15 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
             binding.tvCurrentTime.setText(formatTime(currentPosition));
             binding.timeBar.setPosition(currentPosition);
         }
+    }
+
+    private void updateTimeDisplayFromService(long currentPosition, long duration) {
+        binding.tvCurrentTime.setText(formatTime(currentPosition));
+        if (duration > 0) {
+            binding.timeBar.setDuration(duration);
+            binding.tvTotalTime.setText(formatTime(duration));
+        }
+        binding.timeBar.setPosition(currentPosition);
     }
 
     private String formatTime(long timeMs) {
@@ -468,6 +739,8 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     }
 
     private void setBrightness(int brightness) {
+        if (isAudioOnlyMode) return; // Don't adjust brightness in audio-only mode
+        
         currentBrightness = Math.max(0, Math.min(BRIGHTNESS_MAX, brightness));
         
         WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
@@ -486,6 +759,8 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     }
 
     private void showBrightnessControl() {
+        if (isAudioOnlyMode) return; // Don't show brightness control in audio-only mode
+        
         binding.brightnessControlContainer.setVisibility(View.VISIBLE);
         new Handler().postDelayed(() -> 
             binding.brightnessControlContainer.setVisibility(View.GONE), 3000);
@@ -493,16 +768,26 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
 
     // Advanced features
     private void cyclePlaybackSpeed() {
-        if (player == null) return;
         currentSpeedIndex = (currentSpeedIndex + 1) % playbackSpeeds.length;
         currentPlaybackSpeed = playbackSpeeds[currentSpeedIndex];
-        player.setPlaybackSpeed(currentPlaybackSpeed);
-        binding.tvPlaybackSpeed.setText(String.format(Locale.getDefault(), "%.1fx", currentPlaybackSpeed));
-        Toast.makeText(this, "Speed: " + currentPlaybackSpeed + "X", Toast.LENGTH_SHORT).show();
+        
+        if (useBackgroundService) {
+            Toast.makeText(this, "Speed control not available in audio-only mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        if (player != null) {
+            player.setPlaybackSpeed(currentPlaybackSpeed);
+            binding.tvPlaybackSpeed.setText(String.format(Locale.getDefault(), "%.1fx", currentPlaybackSpeed));
+            Toast.makeText(this, "Speed: " + currentPlaybackSpeed + "X", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void cycleAspectRatio() {
-        if (binding.playerView == null) return;
+        if (isAudioOnlyMode || binding.playerView == null) {
+            Toast.makeText(this, "Aspect ratio not available in audio-only mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
         
         int currentMode = binding.playerView.getResizeMode();
         int nextMode;
@@ -535,23 +820,38 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         Toast.makeText(this, "Aspect Ratio: " + modeName, Toast.LENGTH_SHORT).show();
     }
 
-    // Fixed: Changed from private to public and renamed to avoid override conflict
     @RequiresApi(api = Build.VERSION_CODES.O)
     public void enterPipMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && player != null) {
+        if (isAudioOnlyMode) {
+            Toast.makeText(this, "Picture-in-Picture not available in audio-only mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                VideoSize videoSize = player.getVideoSize();
-                Rational aspectRatio = new Rational(
-                    videoSize.width > 0 ? videoSize.width : 16,
-                    videoSize.height > 0 ? videoSize.height : 9
-                );
+                Rational aspectRatio;
+                
+                if (player != null) {
+                    VideoSize videoSize = player.getVideoSize();
+                    aspectRatio = new Rational(
+                        videoSize.width > 0 ? videoSize.width : 16,
+                        videoSize.height > 0 ? videoSize.height : 9
+                    );
+                } else {
+                    aspectRatio = new Rational(16, 9);
+                }
                 
                 PictureInPictureParams params = new PictureInPictureParams.Builder()
                     .setAspectRatio(aspectRatio)
                     .build();
                 
                 isInPipMode = true;
-                if (!player.isPlaying()) player.play();
+                
+                // Ensure playback continues in PiP
+                if (player != null && !player.isPlaying()) {
+                    player.play();
+                }
+                
                 enterPictureInPictureMode(params);
             } catch (Exception e) {
                 Toast.makeText(this, "PiP not supported: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -560,6 +860,11 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     }
 
     private void takeScreenshot() {
+        if (isAudioOnlyMode) {
+            Toast.makeText(this, "Screenshot not available in audio-only mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
         try {
             binding.playerView.setDrawingCacheEnabled(true);
             Bitmap bitmap = binding.playerView.getDrawingCache();
@@ -585,9 +890,17 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         
         if (id == R.id.btn_back) {
             onBackPressed();
-        } else if (id == R.id.btn_play_pause && player != null) {
-            if (player.isPlaying()) player.pause();
-            else player.play();
+        } else if (id == R.id.btn_play_pause) {
+            if (useBackgroundService && serviceHelper != null) {
+                if (serviceHelper.isPlaying()) {
+                    serviceHelper.pausePlayback();
+                } else {
+                    serviceHelper.resumePlayback();
+                }
+            } else if (player != null) {
+                if (player.isPlaying()) player.pause();
+                else player.play();
+            }
             updatePlayPauseButton();
             scheduleHideControls();
         } else if (id == R.id.btn_lock_screen_edge || id == R.id.btn_unlock) {
@@ -606,6 +919,9 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
             playNextVideo();
         } else if (id == R.id.btn_pip_mode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             enterPipMode();
+        } else if (id == R.id.btn_center_audio_track) {
+            // Handle audio track button click
+            showAudioTrackDialog();
         }
         
         scheduleHideControls();
@@ -671,8 +987,8 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
             // Make sure video is playing in PiP mode
             if (player != null && !player.isPlaying()) {
                 player.play();
-                updatePlayPauseButton();
             }
+            updatePlayPauseButton();
         } else {
             // Show controls when exiting PiP mode
             showPlayerControls();
@@ -683,9 +999,13 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     @Override
     protected void onResume() {
         super.onResume();
-        if (player != null && player.isPlaying()) {
+        
+        if (useBackgroundService && serviceHelper != null) {
+            serviceHelper.bindService();
+        } else if (player != null && player.isPlaying()) {
             timeHandler.post(timeUpdateRunnable);
         }
+        
         showPlayerControls();
         applyOrientationSettings();
     }
@@ -694,25 +1014,43 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     protected void onPause() {
         super.onPause();
         timeHandler.removeCallbacks(timeUpdateRunnable);
-        if (player != null && !isInPipMode) {
+        
+        // Only pause if not in audio-only mode and not in PiP
+        if (!useBackgroundService && player != null && !isInPipMode) {
             player.setPlayWhenReady(false);
             updateGlobalPlayingState(false, videoPath, videoTitle);
         }
+        // Background service continues playing in audio-only mode
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        
+        // Unregister service receiver
+        try {
+            unregisterReceiver(serviceReceiver);
+        } catch (Exception e) {
+            Log.e(TAG, "Error unregistering service receiver", e);
+        }
+        
+        // Unbind from service
+        if (serviceHelper != null) {
+            serviceHelper.unbindService();
+        }
+        
+        // Clean up ExoPlayer
         if (player != null) {
             updateGlobalPlayingState(false, null, null);
             player.release();
         }
+        
         controlsHandler.removeCallbacks(hideControlsRunnable);
         timeHandler.removeCallbacks(timeUpdateRunnable);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
-    // Helper methods (simplified implementations)
+    // Helper methods
     private void initializeBrightness() {
         try {
             currentBrightness = Settings.System.getInt(getContentResolver(), 
@@ -851,8 +1189,12 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
             return;
         }
         
-        if (player != null) player.pause();
-        updateGlobalPlayingState(false, null, null);
+        // Only pause if not in audio-only mode
+        if (!useBackgroundService && player != null) {
+            player.pause();
+            updateGlobalPlayingState(false, null, null);
+        }
+        
         super.onBackPressed();
     }
 }
