@@ -287,7 +287,7 @@ public class HomeVideoFragment extends Fragment implements VideoAdapter.OnVideoC
     public void onVideoClick(VideoModel video, int position) {
         Log.d(TAG, "onVideoClick: " + video.getDisplayName());
         // Handle video click - open video player
-        openVideoPlayer(video);
+        openVideoPlayer(video, position);
         
         // Add to recently played
         if (videoViewModel != null) {
@@ -309,10 +309,38 @@ public class HomeVideoFragment extends Fragment implements VideoAdapter.OnVideoC
         showMoreOptionsMenu(video, position, anchorView);
     }
 
-    private void openVideoPlayer(VideoModel video) {
-        // TODO: Implement video player opening
-        if (getContext() != null) {
-            startActivity(new Intent(getContext(), PlayerActivity.class));
+    private void openVideoPlayer(VideoModel video, int position) {
+        if (getContext() != null && videoList != null && !videoList.isEmpty()) {
+            Log.d(TAG, "Opening video player with playlist of " + videoList.size() + " videos, starting at position " + position);
+            
+            Intent intent = new Intent(getContext(), PlayerActivity.class);
+            intent.putExtra("videoPath", video.getUri().toString());
+            intent.putExtra("videoTitle", video.getTitle());
+            
+            // Pass the complete video list as playlist
+            ArrayList<VideoModel> playlist = new ArrayList<>(videoList);
+            intent.putParcelableArrayListExtra("playlist", playlist);
+            
+            // Find and pass the current video index
+            int currentIndex = position;
+            
+            // Double-check the index by comparing video IDs (more reliable)
+            for (int i = 0; i < videoList.size(); i++) {
+                if (videoList.get(i).getId() == video.getId()) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            
+            intent.putExtra("currentIndex", currentIndex);
+            
+            Log.d(TAG, "Starting PlayerActivity with currentIndex: " + currentIndex);
+            startActivity(intent);
+        } else {
+            Log.e(TAG, "Cannot open video player - context or video list is null/empty");
+            if (getContext() != null) {
+                Toast.makeText(getContext(), "Error opening video player", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
@@ -332,7 +360,7 @@ public class HomeVideoFragment extends Fragment implements VideoAdapter.OnVideoC
         popupMenu.setOnMenuItemClickListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.action_play) {
-                openVideoPlayer(video);
+                openVideoPlayer(video, position);
                 return true;
             } else if (itemId == R.id.action_share) {
                 shareVideo(video);

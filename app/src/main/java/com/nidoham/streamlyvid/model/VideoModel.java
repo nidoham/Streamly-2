@@ -1,10 +1,12 @@
 package com.nidoham.streamlyvid.model;
 
 import android.net.Uri;
+import android.os.Parcel;
+import android.os.Parcelable;
 import androidx.annotation.NonNull;
 import java.util.Objects;
 
-public class VideoModel{
+public class VideoModel implements Parcelable {
     private long id;
     private String title;
     private String displayName;
@@ -45,6 +47,65 @@ public class VideoModel{
         this.height = height;
         this.resolution = width + "x" + height;
     }
+
+    // Parcelable implementation
+    protected VideoModel(Parcel in) {
+        id = in.readLong();
+        title = in.readString();
+        displayName = in.readString();
+        data = in.readString();
+        uri = in.readParcelable(Uri.class.getClassLoader());
+        size = in.readLong();
+        duration = in.readLong();
+        mimeType = in.readString();
+        dateAdded = in.readLong();
+        dateModified = in.readLong();
+        bucketDisplayName = in.readString();
+        bucketId = in.readString();
+        width = in.readInt();
+        height = in.readInt();
+        resolution = in.readString();
+        lastPlayedTime = in.readLong();
+        playCount = in.readInt();
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        dest.writeLong(id);
+        dest.writeString(title);
+        dest.writeString(displayName);
+        dest.writeString(data);
+        dest.writeParcelable(uri, flags);
+        dest.writeLong(size);
+        dest.writeLong(duration);
+        dest.writeString(mimeType);
+        dest.writeLong(dateAdded);
+        dest.writeLong(dateModified);
+        dest.writeString(bucketDisplayName);
+        dest.writeString(bucketId);
+        dest.writeInt(width);
+        dest.writeInt(height);
+        dest.writeString(resolution);
+        dest.writeLong(lastPlayedTime);
+        dest.writeInt(playCount);
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    public static final Creator<VideoModel> CREATOR = new Creator<VideoModel>() {
+        @Override
+        public VideoModel createFromParcel(Parcel in) {
+            return new VideoModel(in);
+        }
+
+        @Override
+        public VideoModel[] newArray(int size) {
+            return new VideoModel[size];
+        }
+    };
 
     // Getters and Setters
     public long getId() { return id; }
