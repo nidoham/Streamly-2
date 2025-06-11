@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <dimen name="btn_play_pause_layout_marginHorizontal">17dp</dimen>
+
     <dimen name="grid_spacing">4dp</dimen>
     <dimen name="card_margin">4dp</dimen>
     <dimen name="card_corner_radius">8dp</dimen>

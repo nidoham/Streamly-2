@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Background - using surfaceVariant -->
+    <path
+        android:fillColor="@color/colorBackground" 
+        android:pathData="M0,0h48v48H0z"/>
+    
+    <!-- Middle rectangle - using secondaryContainer -->
+    <path
+        android:fillColor="@color/colorBackground"
+        android:pathData="M12,12h24v24H12z" />
+    
+    <!-- Inner rectangle - using onPrimaryContainer -->
+    <path
+        android:fillColor="@color/colorBackground"
+        android:pathData="M19,19h10v10H19z" />
+</vector>

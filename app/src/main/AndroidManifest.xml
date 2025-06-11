@@ -122,6 +122,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|navigation"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask" />
+
         <!-- Service for foreground playback (e.g., for background media playback) -->
         <service
             android:name=".PlaybackService"

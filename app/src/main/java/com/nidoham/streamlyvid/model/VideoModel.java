@@ -4,7 +4,7 @@ import android.net.Uri;
 import androidx.annotation.NonNull;
 import java.util.Objects;
 
-public class VideoModel {
+public class VideoModel{
     private long id;
     private String title;
     private String displayName;

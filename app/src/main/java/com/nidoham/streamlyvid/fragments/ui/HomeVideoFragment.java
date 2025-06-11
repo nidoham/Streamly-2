@@ -1,6 +1,7 @@
 package com.nidoham.streamlyvid.fragments.ui;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,6 +21,7 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.nidoham.streamlyvid.PlayerActivity;
 import com.nidoham.streamlyvid.R;
 import com.nidoham.streamlyvid.adapter.VideoAdapter;
 import com.nidoham.streamlyvid.databinding.FragmentHomeVideoBinding;
@@ -289,7 +291,7 @@ public class HomeVideoFragment extends Fragment implements VideoAdapter.OnVideoC
         
         // Add to recently played
         if (videoViewModel != null) {
-            videoViewModel.addToRecentlyPlayed(video);
+           // videoViewModel.addToRecentlyPlayed(video);
         }
     }
 
@@ -310,7 +312,7 @@ public class HomeVideoFragment extends Fragment implements VideoAdapter.OnVideoC
     private void openVideoPlayer(VideoModel video) {
         // TODO: Implement video player opening
         if (getContext() != null) {
-            Toast.makeText(getContext(), "Playing: " + video.getDisplayName(), Toast.LENGTH_SHORT).show();
+            startActivity(new Intent(getContext(), PlayerActivity.class));
         }
     }
 
