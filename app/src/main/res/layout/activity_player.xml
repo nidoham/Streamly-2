@@ -18,6 +18,14 @@
          app:resize_mode="fit"
          android:id="@+id/playerView" />
 
+    <ImageView
+         android:layout_height="match_parent"
+         android:layout_width="match_parent"
+         android:visibility="gone"
+         android:scaleType="fitXY"
+         android:src="@drawable/ic_video_placeholder"
+         android:id="@+id/audioView" />
+
     <FrameLayout
          android:layout_height="match_parent"
          android:layout_width="match_parent"
@@ -488,9 +496,9 @@
              android:layout_height="wrap_content"
              android:layout_width="match_parent"
              android:gravity="center_vertical"
-             android:paddingHorizontal="8dp"
              android:orientation="horizontal"
-             android:paddingBottom="4dp">
+             android:paddingBottom="4dp"
+             android:paddingHorizontal="8dp">
 
             <TextView
                  android:layout_height="wrap_content"
@@ -783,47 +791,6 @@
         </LinearLayout>
 
     </androidx.cardview.widget.CardView>
-
-    <LinearLayout
-         android:layout_height="wrap_content"
-         android:layout_width="wrap_content"
-         android:layout_marginBottom="180dp"
-         android:visibility="gone"
-         android:layout_marginEnd="16dp"
-         android:background="#AA000000"
-         tools:visibility="visible"
-         android:padding="8dp"
-         android:orientation="horizontal"
-         android:id="@+id/next_episode_floating_container"
-         android:layout_gravity="bottom|end">
-
-        <TextView
-             android:layout_height="wrap_content"
-             android:layout_width="wrap_content"
-             android:textSize="14sp"
-             android:textColor="@android:color/white"
-             android:text="Next: " />
-
-        <TextView
-             android:layout_height="wrap_content"
-             android:layout_width="wrap_content"
-             android:textSize="14sp"
-             android:textColor="@android:color/white"
-             android:id="@+id/next_episode_countdown"
-             android:text="10"
-             android:textStyle="bold" />
-
-        <ImageButton
-             android:layout_height="24dp"
-             android:layout_width="24dp"
-             android:contentDescription="Cancel Autoplay"
-             android:src="@android:drawable/ic_menu_close_clear_cancel"
-             android:background="?attr/selectableItemBackgroundBorderless"
-             android:tint="@android:color/white"
-             android:layout_marginStart="8dp"
-             android:id="@+id/btn_cancel_autoplay" />
-
-    </LinearLayout>
 
     <androidx.cardview.widget.CardView
          android:layout_height="wrap_content"

@@ -5,13 +5,13 @@
       "selection": {
         "end": {
           "column": 1,
-          "index": 46361,
-          "line": 1199
+          "index": 53228,
+          "line": 1367
         },
         "start": {
           "column": 1,
-          "index": 46361,
-          "line": 1199
+          "index": 53228,
+          "line": 1367
         }
       }
     },
@@ -19,17 +19,17 @@
       "file": "/storage/emulated/0/AndroidIDEProjects/StreamlyVid/app/src/main/res/layout/activity_player.xml",
       "selection": {
         "end": {
-          "column": 45,
-          "index": 34410,
-          "line": 882
+          "column": 33,
+          "index": 962,
+          "line": 24
         },
         "start": {
-          "column": 45,
-          "index": 34410,
-          "line": 882
+          "column": 33,
+          "index": 962,
+          "line": 24
         }
       }
     }
   ],
-  "selectedFile": "/storage/emulated/0/AndroidIDEProjects/StreamlyVid/app/src/main/java/com/nidoham/streamlyvid/PlayerActivity.java"
+  "selectedFile": "/storage/emulated/0/AndroidIDEProjects/StreamlyVid/app/src/main/res/layout/activity_player.xml"
 }

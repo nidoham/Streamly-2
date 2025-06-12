@@ -15,6 +15,7 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.media.AudioManager;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -25,12 +26,11 @@ import android.provider.Settings;
 import android.util.Log;
 import android.util.Rational;
 import android.view.GestureDetector;
-import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -38,7 +38,6 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
@@ -47,6 +46,9 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.TimeBar;
 
+import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.Glide;
 import com.nidoham.streamlyvid.databinding.ActivityPlayerBinding;
 import com.nidoham.streamlyvid.model.VideoModel;
 import com.nidoham.streamlyvid.service.PlayerService;
@@ -73,8 +75,8 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     
     // Service components
     private ServiceHelper serviceHelper;
-    private boolean useBackgroundService = false; // Default to false - only use when audio-only mode
-    private boolean isAudioOnlyMode = false; // Track if user selected audio-only mode
+    private boolean useBackgroundService = false;
+    private boolean isAudioOnlyMode = false;
 
     // State variables
     private String videoPath, videoTitle;
@@ -94,6 +96,7 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     
     // UI elements for audio mode
     private TextView audioModeIndicator;
+    private ImageView thumbnailImageView;
     
     // Handlers
     private final Handler controlsHandler = new Handler(Looper.getMainLooper());
@@ -172,7 +175,19 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         // Always start with local ExoPlayer (not background service)
         initializePlayer();
     }
-
+    
+    private void hideSystemUI() {
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_IMMERSIVE
+            | View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        );
+    }
+    
     private void initializeComponents() {
         // Window setup
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -199,22 +214,108 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     }
 
     private void initializeAudioModeUI() {
-        // Create audio mode indicator dynamically
-        audioModeIndicator = new TextView(this);
-        audioModeIndicator.setText("🎵 AUDIO ONLY MODE");
-        audioModeIndicator.setTextColor(Color.WHITE);
-        audioModeIndicator.setTextSize(18);
-        audioModeIndicator.setBackgroundColor(Color.parseColor("#80000000"));
-        audioModeIndicator.setPadding(20, 10, 20, 10);
-        audioModeIndicator.setVisibility(View.GONE);
+        // Create audio mode indicator if not exists
+        if (audioModeIndicator == null) {
+            audioModeIndicator = new TextView(this);
+            audioModeIndicator.setText("🎵 Audio Only Mode");
+            audioModeIndicator.setTextColor(Color.WHITE);
+            audioModeIndicator.setBackgroundColor(Color.parseColor("#80000000"));
+            audioModeIndicator.setPadding(16, 8, 16, 8);
+            audioModeIndicator.setVisibility(View.GONE);
+            
+            // Add to layout (you may need to adjust this based on your layout structure)
+            if (binding.getRoot() instanceof androidx.coordinatorlayout.widget.CoordinatorLayout) {
+                androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams params = 
+                    new androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams(
+                        androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams.WRAP_CONTENT,
+                        androidx.coordinatorlayout.widget.CoordinatorLayout.LayoutParams.WRAP_CONTENT
+                    );
+                params.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+                params.topMargin = 100;
+                ((androidx.coordinatorlayout.widget.CoordinatorLayout) binding.getRoot()).addView(audioModeIndicator, params);
+            }
+        }
         
-        // Add to the CoordinatorLayout
-        CoordinatorLayout.LayoutParams params = new CoordinatorLayout.LayoutParams(
-            CoordinatorLayout.LayoutParams.WRAP_CONTENT,
-            CoordinatorLayout.LayoutParams.WRAP_CONTENT
-        );
-        params.gravity = Gravity.CENTER;
-        binding.getRoot().addView(audioModeIndicator, params);
+        // Initialize thumbnail for current video if in playlist
+        if (!playlist.isEmpty() && currentVideoIndex < playlist.size()) {
+            loadThumbnailForCurrentVideo();
+        }
+    }
+
+    private void loadThumbnailForCurrentVideo() {
+        if (currentVideoIndex >= 0 && currentVideoIndex < playlist.size()) {
+            VideoModel currentVideo = playlist.get(currentVideoIndex);
+            loadVideoThumbnail(currentVideo);
+        }
+    }
+
+    private void loadVideoThumbnail(VideoModel video) {
+        if (binding.audioView == null) return;
+        
+        RequestOptions options = new RequestOptions()
+            .centerCrop()
+            .placeholder(R.drawable.ic_video_placeholder)
+            .error(R.drawable.ic_video_placeholder)
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .dontAnimate()
+            .override(400, 400); // Optimize image size
+            
+        try {
+            // First try to load from URI
+            if (video.getUri() != null) {
+                Glide.with(getApplicationContext())
+                    .load(video.getUri())
+                    .apply(options)
+                    .into(binding.audioView);
+            } 
+            // Then try from file path
+            else if (video.getData() != null) {
+                // Try to extract thumbnail from video file
+                extractAndLoadThumbnail(video.getData());
+            } 
+            // Fallback to placeholder
+            else {
+                binding.audioView.setImageResource(R.drawable.ic_video_placeholder);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading thumbnail", e);
+            binding.audioView.setImageResource(R.drawable.ic_video_placeholder);
+        }
+    }
+
+    private void extractAndLoadThumbnail(String videoPath) {
+        // Use background thread for thumbnail extraction
+        new Thread(() -> {
+            try {
+                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                retriever.setDataSource(videoPath);
+                
+                // Get frame at 1 second or 10% of duration, whichever is smaller
+                String durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+                long duration = durationStr != null ? Long.parseLong(durationStr) : 0;
+                long timeUs = Math.min(1000000, duration * 100); // 1 second or 10% of duration
+                
+                Bitmap thumbnail = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                retriever.release();
+                
+                // Update UI on main thread
+                runOnUiThread(() -> {
+                    if (thumbnail != null && binding.audioView != null) {
+                        binding.audioView.setImageBitmap(thumbnail);
+                    } else {
+                        binding.audioView.setImageResource(R.drawable.ic_video_placeholder);
+                    }
+                });
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Error extracting thumbnail from video", e);
+                runOnUiThread(() -> {
+                    if (binding.audioView != null) {
+                        binding.audioView.setImageResource(R.drawable.ic_video_placeholder);
+                    }
+                });
+            }
+        }).start();
     }
 
     private void setupFromIntent() {
@@ -296,16 +397,23 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         
         // Switch mode
         useBackgroundService = audioOnlyMode;
+        isAudioOnlyMode = audioOnlyMode;
         
         if (audioOnlyMode) {
-            // Hide video view in audio-only mode
+            // Hide video view and show audio view with thumbnail
             binding.playerView.setVisibility(View.GONE);
-            // Show audio-only indicator
+            binding.audioView.setVisibility(View.VISIBLE);
             showAudioOnlyIndicator();
+            
+            // Load thumbnail for current video
+            loadThumbnailForCurrentVideo();
+            
+            // Update audio view with current video info
+            updateAudioViewInfo();
         } else {
-            // Show video view in video mode
+            // Show video view and hide audio view
             binding.playerView.setVisibility(View.VISIBLE);
-            // Hide audio-only indicator
+            binding.audioView.setVisibility(View.GONE);
             hideAudioOnlyIndicator();
         }
         
@@ -324,6 +432,19 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         }
     }
 
+    private void updateAudioViewInfo() {
+        if (currentVideoIndex >= 0 && currentVideoIndex < playlist.size()) {
+            VideoModel currentVideo = playlist.get(currentVideoIndex);
+            
+            // Update title if you have a title view in audio mode
+            if (binding.videoTitle != null) {
+                binding.videoTitle.setText(currentVideo.getTitle());
+            }
+            
+            // You can add more audio view updates here like artist, duration, etc.
+        }
+    }
+
     private void showAudioOnlyIndicator() {
         if (audioModeIndicator != null) {
             audioModeIndicator.setVisibility(View.VISIBLE);
@@ -337,19 +458,21 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     }
 
     private void initializeServiceHelper() {
-        serviceHelper = new ServiceHelper(this);
-        serviceHelper.setConnectionListener(new ServiceHelper.ServiceConnectionListener() {
-            @Override
-            public void onServiceConnected(PlayerService service) {
-                Log.d(TAG, "Connected to PlayerService");
-                updatePlayPauseButton();
-            }
-            
-            @Override
-            public void onServiceDisconnected() {
-                Log.d(TAG, "Disconnected from PlayerService");
-            }
-        });
+        if (serviceHelper == null) {
+            serviceHelper = new ServiceHelper(this);
+            serviceHelper.setConnectionListener(new ServiceHelper.ServiceConnectionListener() {
+                @Override
+                public void onServiceConnected(PlayerService service) {
+                    Log.d(TAG, "Connected to PlayerService");
+                    updatePlayPauseButton();
+                }
+                
+                @Override
+                public void onServiceDisconnected() {
+                    Log.d(TAG, "Disconnected from PlayerService");
+                }
+            });
+        }
     }
 
     private void registerServiceReceiver() {
@@ -360,7 +483,12 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         filter.addAction("PREVIOUS_TRACK");
         filter.addAction("MEDIA_ENDED");
         filter.addAction("PLAYER_ERROR");
-        registerReceiver(serviceReceiver, filter);
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(serviceReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(serviceReceiver, filter);
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -374,7 +502,7 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
 
             @Override
             public boolean onDoubleTap(@NonNull MotionEvent e) {
-                if (isLocked) return false;
+                if (isLocked || isAudioOnlyMode) return false; // Disable double tap in audio mode
                 
                 float screenWidth = binding.gestureOverlay.getWidth();
                 long seekTime = e.getX() < screenWidth / 2 ? -10000 : 10000;
@@ -426,8 +554,11 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
                             isGestureActive = true;
                             gestureType = initialX < binding.gestureOverlay.getWidth() / 2 ? 2 : 1;
                             
-                            if (gestureType == 1) showVolumeControl();
-                            else if (!isAudioOnlyMode) showBrightnessControl(); // Only show brightness in video mode
+                            if (gestureType == 1) {
+                                showVolumeControl();
+                            } else if (!isAudioOnlyMode) {
+                                showBrightnessControl(); // Only show brightness in video mode
+                            }
                         }
                     }
                     
@@ -531,8 +662,13 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
             serviceHelper.bindService();
             
             // Start playback through service
-            serviceHelper.startPlayback(videoPath, videoTitle, "Unknown Artist", true);
+            binding.playerView.setVisibility(View.GONE);
+            binding.audioView.setVisibility(View.VISIBLE);
             
+            // Load thumbnail before starting service
+            loadThumbnailForCurrentVideo();
+            
+            serviceHelper.startPlayback(videoPath, videoTitle, "Unknown Artist", true);
             updateGlobalPlayingState(false, videoPath, videoTitle);
         } else {
             // Use ExoPlayer for video playback (default mode)
@@ -542,9 +678,16 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
                 binding.playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
                 player.addListener(this);
                 
+                // Ensure video view is visible and audio view is hidden
+                binding.playerView.setVisibility(View.VISIBLE);
+                binding.audioView.setVisibility(View.GONE);
+                
                 prepareMedia(videoPath);
                 player.setPlayWhenReady(false);
                 updateGlobalPlayingState(false, videoPath, videoTitle);
+                
+                player.prepare();
+                player.play();
             } catch (Exception e) {
                 handlePlayerError("Error initializing player: " + e.getMessage());
             }
@@ -634,6 +777,12 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     private void switchToVideoAtIndex() {
         if (currentVideoIndex >= 0 && currentVideoIndex < playlist.size()) {
             updateVideoFromPlaylist();
+            
+            // Update thumbnail if in audio-only mode
+            if (isAudioOnlyMode) {
+                loadThumbnailForCurrentVideo();
+                updateAudioViewInfo();
+            }
             
             if (useBackgroundService && serviceHelper != null) {
                 serviceHelper.stopPlayback();
@@ -920,7 +1069,6 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         } else if (id == R.id.btn_pip_mode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             enterPipMode();
         } else if (id == R.id.btn_center_audio_track) {
-            // Handle audio track button click
             showAudioTrackDialog();
         }
         
@@ -979,8 +1127,9 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
             // Hide all controls in PiP mode
             hidePlayerControls();
             binding.lockOverlay.setVisibility(View.GONE);
-            binding.qualitySelectorDialog.setVisibility(View.GONE);
-            binding.nextEpisodeFloatingContainer.setVisibility(View.GONE);
+            if (binding.qualitySelectorDialog != null) {
+                binding.qualitySelectorDialog.setVisibility(View.GONE);
+            }
             binding.brightnessControlContainer.setVisibility(View.GONE);
             binding.volumeControlContainer.setVisibility(View.GONE);
             
@@ -1008,6 +1157,7 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         
         showPlayerControls();
         applyOrientationSettings();
+        hideSystemUI();
     }
 
     @Override
@@ -1078,16 +1228,6 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         }
     }
 
-    private void hideSystemUI() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            getWindow().setDecorFitsSystemWindows(false);
-        } else {
-            getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-        }
-    }
-
     private void showSystemUI() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(true);
@@ -1128,29 +1268,23 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
     private void showNextVideoCountdown() {
         if (currentVideoIndex >= playlist.size() - 1) return;
         
-        binding.nextEpisodeFloatingContainer.setVisibility(View.VISIBLE);
-        final int[] countdown = {10};
+        final int[] countdown = {3}; // 3 second countdown
         
         Handler countdownHandler = new Handler();
         Runnable countdownRunnable = new Runnable() {
             @Override
             public void run() {
-                countdown[0]--;
-                binding.nextEpisodeCountdown.setText(String.valueOf(countdown[0]));
-                
-                if (countdown[0] <= 0) {
-                    binding.nextEpisodeFloatingContainer.setVisibility(View.GONE);
-                    playNextVideo();
-                } else {
+                if (countdown[0] > 0) {
+                    Toast.makeText(PlayerActivity.this, 
+                        "Next video in " + countdown[0] + " seconds", 
+                        Toast.LENGTH_SHORT).show();
+                    countdown[0]--;
                     countdownHandler.postDelayed(this, 1000);
+                } else {
+                    playNextVideo();
                 }
             }
         };
-        
-        binding.btnCancelAutoplay.setOnClickListener(v -> {
-            countdownHandler.removeCallbacks(countdownRunnable);
-            binding.nextEpisodeFloatingContainer.setVisibility(View.GONE);
-        });
         
         countdownHandler.post(countdownRunnable);
     }
@@ -1159,6 +1293,11 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         Log.e(TAG, message);
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
         updateGlobalPlayingState(false, null, null);
+        
+        // Show error overlay if available
+        if (binding.errorOverlay != null) {
+            binding.errorOverlay.setVisibility(View.VISIBLE);
+        }
     }
 
     private void updateGlobalPlayingState(boolean isPlaying, String path, String title) {
@@ -1177,15 +1316,29 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         }
         
         // Hide any visible overlays first
-        if (binding.qualitySelectorDialog.getVisibility() == View.VISIBLE ||
-            binding.errorOverlay.getVisibility() == View.VISIBLE ||
-            binding.brightnessControlContainer.getVisibility() == View.VISIBLE ||
-            binding.volumeControlContainer.getVisibility() == View.VISIBLE) {
-            
+        boolean hasVisibleOverlay = false;
+        
+        if (binding.qualitySelectorDialog != null && binding.qualitySelectorDialog.getVisibility() == View.VISIBLE) {
             binding.qualitySelectorDialog.setVisibility(View.GONE);
+            hasVisibleOverlay = true;
+        }
+        
+        if (binding.errorOverlay != null && binding.errorOverlay.getVisibility() == View.VISIBLE) {
             binding.errorOverlay.setVisibility(View.GONE);
+            hasVisibleOverlay = true;
+        }
+        
+        if (binding.brightnessControlContainer.getVisibility() == View.VISIBLE) {
             binding.brightnessControlContainer.setVisibility(View.GONE);
+            hasVisibleOverlay = true;
+        }
+        
+        if (binding.volumeControlContainer.getVisibility() == View.VISIBLE) {
             binding.volumeControlContainer.setVisibility(View.GONE);
+            hasVisibleOverlay = true;
+        }
+        
+        if (hasVisibleOverlay) {
             return;
         }
         
@@ -1196,5 +1349,20 @@ public class PlayerActivity extends AppCompatActivity implements Player.Listener
         }
         
         super.onBackPressed();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Handle hardware volume keys
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            int newVolume = keyCode == KeyEvent.KEYCODE_VOLUME_UP ? 
+                Math.min(maxVolume, currentVolume + 1) : 
+                Math.max(0, currentVolume - 1);
+            setVolume(newVolume);
+            showVolumeControl();
+            return true;
+        }
+        
+        return super.onKeyDown(keyCode, event);
     }
 }
